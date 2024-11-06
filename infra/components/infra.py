@@ -5,11 +5,13 @@ from pulumi_aws import iam
 from pulumi_eks import Cluster
 import pulumi_awsx as awsx
 import pulumi_kubernetes as k8s
+from typing import Any
 
 class Infra(pulumi.ComponentResource):
     
     k8s_provider: k8s.Provider
     namespace: k8s.core.v1.Namespace
+    kubeconfig: pulumi.Output[Any]
 
     def __init__(self, name, vpc_network_cidr="10.0.0.0/16", opts=None):
         super().__init__('contso:infra:Infra', name, None, opts)
@@ -133,11 +135,28 @@ class Infra(pulumi.ComponentResource):
             opts=k8sopts,
         )
 
-
-
+        self.kubeconfig = pulumi.Output.secret(cluster.kubeconfig)
 
         # Create a Kubernetes namespace
         self.namespace = k8s.core.v1.Namespace('app-ns', 
+            metadata={
+                "name": "app-ns",
+            },
             opts=k8sopts
         )
+
+        config = pulumi.Config()
+        pat = config.require_secret("pat")
+        self.patSecret = k8s.core.v1.Secret("my-secret",
+            metadata={
+                "namespace": self.namespace.metadata.name,
+                "name": "pulumi-access-token",
+            },
+            string_data={
+                "PULUMI_ACCESS_TOKEN": pat,
+            },
+            type="Opaque",
+            opts=k8sopts,
+        )
+
 

@@ -1,0 +1,7 @@
+- [ ] No secrets in plain text
+- [ ] No long lived secrets
+- [ ] Avoid copy paste and have single source of truth each team uses
+- [ ] Keep existing secrets in AWS Secrets Manager and 1Password
+- [ ] Time box access to cloud environments
+- [ ] Restrict access to cloud environments to only those people or services that require access
+- [ ] We need to audit our secrets changes and accesses

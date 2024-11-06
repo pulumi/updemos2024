@@ -1,3 +1,4 @@
 openai
 pulumi_esc_sdk
 pyyaml
+flask

@@ -13,6 +13,7 @@ from pulumi_kubernetes.core.v1 import (
 )
 from pulumi_kubernetes.meta.v1 import LabelSelectorArgs, ObjectMetaArgs
 from typing import NotRequired, Optional, Sequence, TypedDict
+from .infra import Infra
 
 class ServiceDeploymentArgs(TypedDict):
     image: str
@@ -45,7 +46,7 @@ class ServiceDeployment(ComponentResource):
     service: Service
     ip_address: Output[str]
 
-    def __init__(self, name: str, args: ServiceDeploymentArgs, opts: Optional[ResourceOptions] = None):
+    def __init__(self, name: str, infra: Infra, args: ServiceDeploymentArgs, opts: Optional[ResourceOptions] = None):
         super().__init__('k8sx:component:ServiceDeployment', name, {}, opts)
 
         labels = {"app": name}
@@ -59,20 +60,40 @@ class ServiceDeployment(ComponentResource):
                 },
             ),
             ports=[ContainerPortArgs(container_port=p) for p in args['ports']] if args['ports'] else None,
+            volume_mounts=[
+                {
+                    "name": "pulumi-serviceaccounttoken",
+                    "mount_path": "/var/run/secrets/pulumi",
+                }
+            ],
+            env_from=[{ "secret_ref": { "name": infra.patSecret.metadata.name } }],
         )
         self.deployment = Deployment(
             name,
             metadata=ObjectMetaArgs(
                 labels=labels,
-                # annotations={"pulumi.com/waitFor": "condition=Synced"},
-                # annotations={"pulumi.com/waitFor": "jsonpath={.status.phase}=Running"},
+                namespace=infra.namespace.metadata.name,
             ),
             spec=DeploymentSpecArgs(
                 selector=LabelSelectorArgs(match_labels=labels),
                 replicas=args['replicas'] if 'replicas' in args else 1,
                 template=PodTemplateSpecArgs(
                     metadata=ObjectMetaArgs(labels=labels),
-                    spec=PodSpecArgs(containers=[container]),
+                    spec=PodSpecArgs(
+                        containers=[container],
+                        volumes=[{
+                            "name": "pulumi-serviceaccounttoken",
+                            "projected": {
+                                "sources": [{
+                                    "service_account_token": {
+                                        "audience": pulumi.Output.format("urn:pulumi:org:{0}", pulumi.get_organization()),
+                                        "path": "token",
+                                        "expiration_seconds": 3600,
+                                    },
+                                }],
+                            },
+                        }]
+                    ),
                 ),
             ),
             opts=pulumi.ResourceOptions(parent=self))
@@ -80,6 +101,7 @@ class ServiceDeployment(ComponentResource):
             name,
             metadata=ObjectMetaArgs(
                 name=name,
+                namespace=infra.namespace.metadata.name,
                 labels=self.deployment.metadata.apply(lambda m: m.labels or {}),
             ),
             spec=ServiceSpecArgs(
